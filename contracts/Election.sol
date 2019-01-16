@@ -2,30 +2,41 @@ pragma solidity >=0.4.21 <0.6.0;
 
 contract Election {
 
-  bool isStateElection;
-  bool isSingleMemberBallots;
+  //bool isStateElection;
+  bool isClosed;
+  bool isPending;
+  uint votes;
 
-  event NewVote(uint candidateId, uint voices);
+  uint    public voters;
+  address public owner;
+
+  event NewVote(uint candidateId, uint candidateVoices, uint votes);
+  event NewVoter(address voterAddress);
 
   struct Candidate {
-    address   citizenId;
-    Citizen   citizen;
+    bool      disqualified;
+    uint      voices;
+    string    name;
+    string    first;
     string    slogan;
     string    description;
+    string    picture;
   }
 
-  mapping(address => uint)  candidatesVoices;
-  mapping(address => Citizen) candidatePoolMembers;
-
-  function createElection(bool _isStateElection, bool _isSingleMemberBallots) {
-
+  struct Voter {
+    bool    hasVoted;
+    bool    isAuthorized;
   }
 
-  function createCandidate(Citizen _citizen) {
+  Candidate[] public candidates;
 
-  }
+  mapping(address => Voter) voters;
+  mapping(address => uint)  candidateIndex;
 
-  function vote(Candidate _candidate, Citizen _citizen) {
-    NewVote(,);
+  constructor(/*bool _isStateElection*/) public {
+    owner     = msg.sender;
+    isClosed  = true;
+    isPending = true;
+    //isStateElection = _isStateElection;
   }
 }
