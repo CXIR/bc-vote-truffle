@@ -1,5 +1,7 @@
 pragma solidity >=0.4.21 <0.6.0;
 
+import "./Election.sol";
+
 contract ElectionProcess is Election {
 
   modifier onlyOwner () {
@@ -23,69 +25,101 @@ contract ElectionProcess is Election {
     _;
   }
 
-  function authorizeVoter (address _voterAddress) onlyOwner {
+  function authorizeVoter (address _voterAddress) public onlyOwner {
 
-    // add an event
-    if(voters[_voterAddress] == 0) {
-      voters[_voterAddress] = Voter(false, true);
+    if (voters[_voterAddress].present == 0) {
+
+      voters[_voterAddress] = Voter(false, true, 1);
+      emit NewVoter(_voterAddress);
+      votersCount += 1;
     }
   }
 
-  function unauthorizeVoter (address _voterAddress) onlyOwner {
+  function unauthorizeVoter (address _voterAddress) public onlyOwner {
 
     require(voters[_voterAddress].isAuthorized == true);
     voters[_voterAddress].isAuthorized = false;
+    votersCount -= 1;
   }
 
-  function addCandidate (address _candidateAddress,
-                         string _name,
-                         string _first,
-                         string slogan,
-                         string description,
-                         string picture) onlyOwner onlyElectionPending {
+  function addCandidate ( address _candidateAddress,
+                          bool   _isListHead ) public onlyOwner onlyElectionPending {
 
-    Candidate candidate = Candidate(false,
-                                    0,
-                                    _name,
-                                    _first,
-                                    _slogan,
-                                    _description,
-                                    _picture);
+    if (candidateIndex[_candidateAddress] == 0) {
 
-    uint index = candidates.push(candidate);
-    candidateIndex[_candidateAddress] = index;
+      Candidate memory c = Candidate( false,
+                                               0,
+                                               _isListHead,
+                                               false );
+      if(c.isListHead){
+        c.isListMember = true;
+      }
+
+      uint index = candidates.push(c);
+      candidateIndex[_candidateAddress] = index;
+      emit NewCandidate(index);
+    }
   }
 
-  function disqualifyCandidate (address _candidateAddress) onlyOwner onlyElectionPending {
+  function attachCandidateToList (address _headCandidateAddress, address _memberCandidateAddress) public onlyOwner onlyElectionPending {
 
-    // add an event
-    uint index = candidateIndex[_candidateAddress];
-    candidates[index].disqualified = true;
+    Candidate storage head = candidates[ candidateIndex[_headCandidateAddress]];
+    Candidate storage member = candidates[ candidateIndex[_memberCandidateAddress]];
+
+    require( head.isListHead      );
+    require( !member.isListHead   );
+    require( !member.isListMember );
+
+    candidateListMembers[_headCandidateAddress] = _memberCandidateAddress;
+    member.isListMember = true;
+
+    emit CandidateStateChange(candidateIndex[_memberCandidateAddress]);
   }
 
-  function getCandidates () external view returns(Candidate[]) {
-    return candidates;
+  function pushCandidateToHeadList (uint _candidateId) public onlyOwner onlyElectionPending {
+    require( !candidates[_candidateId].isListMember );
+
+    candidates[_candidateId].isListHead   = true;
+    candidates[_candidateId].isListMember = true;
+  }
+
+  function disqualifyCandidate (uint _candidateId) external onlyOwner onlyElectionPending {
+
+    candidates[ _candidateId].disqualified = true;
+    emit CandidateStateChange(_candidateId);
+  }
+
+  function isElector (address _voterAddress) public view returns (bool) {
+    require(voters[_voterAddress].present == 1);
+
+    if(voters[_voterAddress].isAuthorized) return true;
+    return false;
   }
 
   function vote (address _candidateAddress) external onlyAuthorized onlyElectionOpen {
 
-    // add an event
+    Candidate storage c = candidates[ candidateIndex[_candidateAddress]];
+
+    require( !c.isListMember );
+    require( !c.disqualified );
+
     uint index = candidateIndex[_candidateAddress];
     candidates[index].voices += 1;
-    voter.hasVoted = true;
+    Voter storage v = voters[msg.sender];
+    v.hasVoted = true;
   }
 
-  function closeElection () onlyOwner onlyElectionOpen {
+  function closeElection () public onlyOwner onlyElectionOpen {
 
-    //add an event
     isClosed = true;
     sortAsResults();
+    emit ElectionStateChange(false,false);
   }
 
-  function openElection () onlyElectionPending {
+  function openElection () public onlyElectionPending {
 
-    //add an event
     isPending = false;
+    emit ElectionStateChange(true,false);
   }
 
   function sortAsResults () internal {
@@ -94,18 +128,15 @@ contract ElectionProcess is Election {
 
       if (candidates[i].voices < candidates[i+1].voices) {
 
-        Candidate temp            = candidates[i];
+        Candidate storage temp    = candidates[i];
                   candidates[i]   = candidates[i+1];
                   candidates[i+1] = temp;
       }
     }
   }
 
-  function abstainers () external view returns(uint) {
-    return voters - votes;
-  }
+  function abstainers () external view returns (uint) {
 
-  function results () external view returns (Candidate[]) { //view only read w/out modifying state
-    return candidates;
+    return votersCount - totalVotes;
   }
 }
